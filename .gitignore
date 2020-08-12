@@ -21,6 +21,7 @@ build
 
 # Output
 bin/
+bin-int/
 lib/
 
 # QtCreator
