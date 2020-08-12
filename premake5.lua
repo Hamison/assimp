@@ -1,192 +1,336 @@
+--Premake5 version of the CMAKE build system
+
+--Define project version here
+PROJECT_VERSION_MAJOR = 5
+PROJECT_VERSION_MINOR = 0
+PROJECT_VERSION_PATCH = 1
+
+PROJECT_VERSION = tostring(PROJECT_VERSION_MAJOR) .. "." ..
+    tostring(PROJECT_VERSION_MINOR) .. "." ..
+    tostring(PROJECT_VERSION_PATCH)
+
+--Execite process is used to perform a command line process (as per cmake)
+function execute_process(cmd)
+    -- Get a temporary file name
+    local n = os.tmpname ()
+
+    -- Execute a command and send to file
+    os.execute (cmd .. " > " .. n)
+    
+    -- Concatenate output
+    local str = ""
+    for line in io.lines (n) do
+        str = str .. line
+    end
+
+    -- Remove temporary file
+    os.remove (n)
+    
+    return str
+end
+
+-- Check if string is empty or not
+local function isempty(s)
+  return s == nil or s == ''
+end
+
+-- Configures a file using the input file and replace with options
+function configure_file(filename_in, filename_out, configurables)
+ --
+ --  Read the file
+ --
+ local f = io.open(filename_in, "r")
+ local content = f:read("*all")
+ f:close()
+ 
+ --
+ -- Edit the string using the configurables table
+ --
+ for key,value in pairs(configurables) do 
+    content = content:gsub('@' .. key .. '@', value)
+    
+    if value == nil or value == '' then
+        output_str = '/* #undef ' .. key .. ' */'
+    else
+        output_str = '#define ' .. key .. ' ' .. value
+    end
+    
+    content = content:gsub('#cmakedefine ' .. key .. ' %S+', output_str)
+ end
+ 
+ --
+ -- Write it out
+ --
+ local f = io.open(filename_out, "w")
+ f:write(content)
+ f:close()
+ 
+end
+
+-- Configuration options
+configurables = {}
+configurables["ASSIMP_VERSION_MAJOR"] = PROJECT_VERSION_MAJOR
+configurables["ASSIMP_VERSION_MINOR"] = PROJECT_VERSION_MINOR
+configurables["ASSIMP_VERSION_PATCH"] = PROJECT_VERSION_PATCH
+configurables["ASSIMP_VERSION"] = PROJECT_VERSION
+configurables["ASSIMP_SOVERSION"] = 5
+configurables["ASSIMP_PACKAGE_VERSION"] = "0"
+
+configurables["LIBASSIMP_COMPONENT"] = "libassimp" .. PROJECT_VERSION
+configurables["LIBASSIMP-DEV_COMPONENT"] = "libassimp" .. PROJECT_VERSION .. "-dev"
+--configurables["CPACK_COMPONENTS_ALL"] = 
+configurables["ASSIMP_LIBRARY_SUFFIX"] = ""
+configurables["LIBRARY_SUFFIX"] = ""
+configurables["CMAKE_DEBUG_POSTFIX"] = "" --should set to "d" if debug
+configurables["GIT_BRANCH"] = execute_process('"git rev-parse --abbrev-ref HEAD"')
+configurables["GIT_COMMIT_HASH"] = execute_process("git rev-parse --short=8 HEAD")
+configurables["ASSIMP_DOUBLE_PRECISION"] = ""
+
+if isempty(configurables["GIT_COMMIT_HASH"]) then
+  configurables["GIT_COMMIT_HASH"] = "0"
+end
+
+-- Configure file
+configure_file("revision.h.in", "revision.h", configurables)
+configure_file("include/assimp/config.h.in", "include/assimp/config.h",
+    configurables)
+configure_file("contrib/zlib/zconf.h.in", "contrib/zlib/zconf.h",
+    configurables)
+
+--Project configuration:
+------------------------
+--workspace "assimp"
+  --architecture "x86_64"
+  --startproject "Sandbox"
+  --configurations { "Debug", "Release" }
+  --flags { "MultiProcessorCompile"	}
+
+--outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
+
 project "assimp"
 	kind "StaticLib"
 	language "C++"
-   -- configurations { "Debug", "Release" }
 
 	targetdir ("bin/" .. outputdir .. "/%{prj.name}")
 	objdir ("bin-int/" .. outputdir .. "/%{prj.name}")
-		
 	
+	defines
+    {
+		--"ASSIMP_BUILD_NO_OWN_ZLIB",
+        "ASSIMP_BUILD_NO_C4D_IMPORTER",
+        "OPENDDL_STATIC_LIBARY",
+        --"MINIZ_NO_ZLIB_COMPATIBLE_NAMES"
+	}
+
 	filter "system:windows"
 		systemversion "latest"
 		staticruntime "On"
         cppdialect "C++11"
-
-        defines {
-            "_CRT_SECURE_NO_WARNINGS",
-            "_CRT_SECURE_NO_DEPRECATE",
+    
+        -- Add these to MSC flags instead
+        buildoptions
+        {
+          --"/MP",
+          "/bigobj"
         }
+
+        defines
+        {
+          "_CRT_SECURE_NO_WARNINGS",
+          "_CRT_SECURE_NO_DEPRECATE",
+          "WIN32_LEAN_AND_MEAN"
+        }
+
 
         disablewarnings {
-            "4244",
-            "4305",
-            "4996",
-        }
-		
-		sysincludedirs {
-            "include",
-            "contrib/irrXML",
-            "contrib/zlib",
-            "contrib/rapidjson/include",
+          "4244",
+          "4305",
+          "4996"
         }
         
-        includedirs {
+        includedirs
+        {
+            ".",
+            "code",
             "include",
+            "contrib/*",
+            "code/AssetLib/*",
+            "code/CApi",
+            "code/Common",
+            "code/Material",
+            "code/PostProcessing",
+            "contrib/clipper",
             "contrib/irrXML",
-            "contrib/zlib",
+            "contrib/Open3DGC",
+            "contrib/openddlparser/include",
+            "contrib/poly2tri/poly2tri",
+            "contrib/poly2tri/poly2tri/common",
+            "contrib/poly2tri/poly2tri/sweep",
             "contrib/rapidjson/include",
+            "contrib/stb_image",
+            "contrib/unzip",
+            "contrib/utf8cpp/source",
+            "contrib/utf8cpp/source/utf8",
+            "contrib/zip/src",
+            "contrib/zlib"
+            --"contrib/zlib/blast",
+            --"contrib/zlib/infback9",
+            --"contrib/zlib/iostrem3",
+            --"contrib/zlib/minizip",
+            --"contrib/zlib/puff"
         }
 
-        defines {
-            -- "SWIG",
-            "ASSIMP_BUILD_NO_OWN_ZLIB",
+        files {
+          "include/**.h",
+          "include/**.hpp",
+          "include/**.cpp",
+          "include/**.inl",
+          "code/AssetLib/**.h",
+          "code/AssetLib/**.c",
+          "code/AssetLib/**.hpp",
+          "code/AssetLib/**.cpp",
+          "code/CApi/*.h",
+          "code/CApi/*.hpp",
+          "code/CApi/*.cpp",
+          "code/Common/**.h",
+          "code/Common/**.hpp",
+          "code/Common/**.cpp",
+          "code/Material/MaterialSystem.h",
+          "code/Material/MaterialSystem.cpp",
+          "code/PostProcessing/*.h",
+          "code/PostProcessing/*.hpp",
+          "code/PostProcessing/*.cpp",
+          "contrib/**.h",
+          "contrib/**.hpp",
+          "contrib/**.cpp",
+          "contrib/**.c",
+          "contrib/**.cc"
+          --"contrib/**.rc"
+        }
 
-            "ASSIMP_BUILD_NO_X_IMPORTER",
-            "ASSIMP_BUILD_NO_3DS_IMPORTER",
-            "ASSIMP_BUILD_NO_MD3_IMPORTER",
-            "ASSIMP_BUILD_NO_MDL_IMPORTER",
-            "ASSIMP_BUILD_NO_MD2_IMPORTER",
-            -- "ASSIMP_BUILD_NO_PLY_IMPORTER",
-            "ASSIMP_BUILD_NO_ASE_IMPORTER",
-            -- "ASSIMP_BUILD_NO_OBJ_IMPORTER",
-            "ASSIMP_BUILD_NO_AMF_IMPORTER",
-            "ASSIMP_BUILD_NO_HMP_IMPORTER",
-            "ASSIMP_BUILD_NO_SMD_IMPORTER",
-            "ASSIMP_BUILD_NO_MDC_IMPORTER",
-            "ASSIMP_BUILD_NO_MD5_IMPORTER",
-            "ASSIMP_BUILD_NO_STL_IMPORTER",
-            "ASSIMP_BUILD_NO_LWO_IMPORTER",
-            "ASSIMP_BUILD_NO_DXF_IMPORTER",
-            "ASSIMP_BUILD_NO_NFF_IMPORTER",
-            "ASSIMP_BUILD_NO_RAW_IMPORTER",
-            "ASSIMP_BUILD_NO_OFF_IMPORTER",
-            "ASSIMP_BUILD_NO_AC_IMPORTER",
-            "ASSIMP_BUILD_NO_BVH_IMPORTER",
-            "ASSIMP_BUILD_NO_IRRMESH_IMPORTER",
-            "ASSIMP_BUILD_NO_IRR_IMPORTER",
-            "ASSIMP_BUILD_NO_Q3D_IMPORTER",
-            "ASSIMP_BUILD_NO_B3D_IMPORTER",
-            -- "ASSIMP_BUILD_NO_COLLADA_IMPORTER",
-            "ASSIMP_BUILD_NO_TERRAGEN_IMPORTER",
-            "ASSIMP_BUILD_NO_CSM_IMPORTER",
-            "ASSIMP_BUILD_NO_3D_IMPORTER",
-            "ASSIMP_BUILD_NO_LWS_IMPORTER",
-            "ASSIMP_BUILD_NO_OGRE_IMPORTER",
-            "ASSIMP_BUILD_NO_OPENGEX_IMPORTER",
-            "ASSIMP_BUILD_NO_MS3D_IMPORTER",
-            "ASSIMP_BUILD_NO_COB_IMPORTER",
-            "ASSIMP_BUILD_NO_BLEND_IMPORTER",
-            "ASSIMP_BUILD_NO_Q3BSP_IMPORTER",
-            "ASSIMP_BUILD_NO_NDO_IMPORTER",
-            "ASSIMP_BUILD_NO_IFC_IMPORTER",
-            "ASSIMP_BUILD_NO_XGL_IMPORTER",
-            -- "ASSIMP_BUILD_NO_FBX_IMPORTER",
-            "ASSIMP_BUILD_NO_ASSBIN_IMPORTER",
-            -- "ASSIMP_BUILD_NO_GLTF_IMPORTER",
-            "ASSIMP_BUILD_NO_C4D_IMPORTER",
-            "ASSIMP_BUILD_NO_3MF_IMPORTER",
-            "ASSIMP_BUILD_NO_X3D_IMPORTER",
-            "ASSIMP_BUILD_NO_MMD_IMPORTER",
+        removefiles
+        {
+          "code/AssetLib/IFC/IFCReaderGen_4.h",
+          "code/AssetLib/IFC/IFCReaderGen_4.cpp",
+          "contrib/gtest/**",
+          "contrib/zip/test/**",
+          "contrib/zlib/**"
+          --"contrib/zlib/contrib/inflate86/**",
+          --"contrib/zlib/contrib/iostream/**",
+          --"contrib/zlib/contrib/iostream2/**",
+          --"contrib/zlib/contrib/iostream3/test.cc",
+          --"contrib/zlib/contrib/testzlib/**"
+        }
+        
+        links
+        {
+            "zlib"
+        }
+
+        filter "configurations:Debug"
+            runtime "Debug"
+            symbols "on"
+
+        filter "configurations:Release"
+            runtime "Release"
+            optimize "on"
             
-            "ASSIMP_BUILD_NO_STEP_EXPORTER",
-            "ASSIMP_BUILD_NO_SIB_IMPORTER",
-
-            -- "ASSIMP_BUILD_NO_MAKELEFTHANDED_PROCESS",
-            -- "ASSIMP_BUILD_NO_FLIPUVS_PROCESS",
-            -- "ASSIMP_BUILD_NO_FLIPWINDINGORDER_PROCESS",
-            -- "ASSIMP_BUILD_NO_CALCTANGENTS_PROCESS",
-            "ASSIMP_BUILD_NO_JOINVERTICES_PROCESS",
-            -- "ASSIMP_BUILD_NO_TRIANGULATE_PROCESS",
-            "ASSIMP_BUILD_NO_GENFACENORMALS_PROCESS",
-            -- "ASSIMP_BUILD_NO_GENVERTEXNORMALS_PROCESS",
-            "ASSIMP_BUILD_NO_REMOVEVC_PROCESS",
-            "ASSIMP_BUILD_NO_SPLITLARGEMESHES_PROCESS",
-            "ASSIMP_BUILD_NO_PRETRANSFORMVERTICES_PROCESS",
-            "ASSIMP_BUILD_NO_LIMITBONEWEIGHTS_PROCESS",
-            -- "ASSIMP_BUILD_NO_VALIDATEDS_PROCESS",
-            "ASSIMP_BUILD_NO_IMPROVECACHELOCALITY_PROCESS",
-            "ASSIMP_BUILD_NO_FIXINFACINGNORMALS_PROCESS",
-            "ASSIMP_BUILD_NO_REMOVE_REDUNDANTMATERIALS_PROCESS",
-            "ASSIMP_BUILD_NO_FINDINVALIDDATA_PROCESS",
-            "ASSIMP_BUILD_NO_FINDDEGENERATES_PROCESS",
-            "ASSIMP_BUILD_NO_SORTBYPTYPE_PROCESS",
-            "ASSIMP_BUILD_NO_GENUVCOORDS_PROCESS",
-            "ASSIMP_BUILD_NO_TRANSFORMTEXCOORDS_PROCESS",
-            "ASSIMP_BUILD_NO_FINDINSTANCES_PROCESS",
-            "ASSIMP_BUILD_NO_OPTIMIZEMESHES_PROCESS",
-            "ASSIMP_BUILD_NO_OPTIMIZEGRAPH_PROCESS",
-            "ASSIMP_BUILD_NO_SPLITBYBONECOUNT_PROCESS",
-            "ASSIMP_BUILD_NO_DEBONE_PROCESS",
-            "ASSIMP_BUILD_NO_EMBEDTEXTURES_PROCESS",
-            "ASSIMP_BUILD_NO_GLOBALSCALE_PROCESS",
-        }
-		
-		files {
-			"include/**",
-			"code/Assimp.cpp",
-			"code/BaseImporter.cpp",
-			"code/ColladaLoader.cpp",
-			"code/ColladaParser.cpp",
-			"code/CreateAnimMesh.cpp",
-			"code/PlyParser.cpp",
-			"code/PlyLoader.cpp",
-			"code/BaseProcess.cpp",
-			"code/FBXAnimation.cpp",
-			"code/EmbedTexturesProcess.cpp",
-			"code/FBXBinaryTokenizer.cpp",
-			"code/FBXConverter.cpp",
-			"code/FBXDeformer.cpp",
-			"code/FBXDocument.cpp",
-			"code/FBXDocumentUtil.cpp",
-			"code/FBXImporter.cpp",
-			"code/FBXMaterial.cpp",
-			"code/FBXMeshGeometry.cpp",
-			"code/FBXModel.cpp",
-			"code/FBXNodeAttribute.cpp",
-			"code/FBXParser.cpp",
-			"code/FBXProperties.cpp",
-			"code/FBXTokenizer.cpp",
-			"code/FBXUtil.cpp",
-			"code/ConvertToLHProcess.cpp",
-			"code/DefaultIOStream.cpp",
-			"code/DefaultIOSystem.cpp",
-			"code/DefaultLogger.cpp",
-			"code/GenVertexNormalsProcess.cpp",
-			"code/Importer.cpp",
-			"code/ImporterRegistry.cpp",
-			"code/MaterialSystem.cpp",
-			"code/PostStepRegistry.cpp",
-			"code/ProcessHelper.cpp",
-			"code/scene.cpp",
-			"code/ScenePreprocessor.cpp",
-			"code/ScaleProcess.cpp",
-			"code/SGSpatialSort.cpp",
-			"code/SkeletonMeshBuilder.cpp",
-			"code/SpatialSort.cpp",
-			"code/TriangulateProcess.cpp",
-			"code/ValidateDataStructure.cpp",
-			"code/Version.cpp",
-			"code/VertexTriangleAdjacency.cpp",
-			"code/ObjFileImporter.cpp",
-			"code/ObjFileMtlImporter.cpp",
-			"code/ObjFileParser.cpp",
-			"code/glTFImporter.cpp",
-			"code/glTF2Importer.cpp",
-			"code/MakeVerboseFormat.cpp",
-			"code/CalcTangentsProcess.cpp",
-			"code/ScaleProcess.cpp",
-			"code/EmbedTexturesProcess.cpp",
-			"contrib/irrXML/*",
-		}
-	
-	filter "configurations:Debug"
-		runtime "Debug"
-		symbols "on"
-
-	filter "configurations:Release"
-		runtime "Release"
-		optimize "on"
-		
+        --filter "toolset:msc"
+            --defines
+            --{
+            --"UNICODE",
+            --"_UNICODE"
+            --}
+           
+-- function files_in_dir(dir, files_in_dir)
+  -- local paths = {}
+  -- for _, file in ipairs(files_in_dir) do
+    --TODO: don't add "/" if dir ends with it of file starts with it
+    -- local path = dir .. "/" .. file
+    -- table.insert(paths, path)
+  -- end
+  -- files(paths)
+-- end
 
 
 
+-- function zlib_files()
+  -- files_in_dir("contrib/zlib", {
+    -- "adler32.c",
+    -- "compress.c",
+    -- "crc32.c",
+    -- "deflate.c",
+    -- "inffast.c",
+    -- "inflate.c",
+    -- "inftrees.c",
+    -- "trees.c",
+    -- "zutil.c",
+    -- "gzlib.c",
+    -- "gzread.c",
+    -- "gzwrite.c",
+    -- "gzclose.c",
+  -- })
+-- end
+
+-- project "zlib"
+    -- kind "StaticLib"
+    -- language "C"
+
+	-- targetdir ("bin/" .. outputdir .. "/%{prj.name}")
+	-- objdir ("bin-int/" .. outputdir .. "/%{prj.name}")
+    
+    -- warnings    "off"
+    
+    -- includedirs
+    -- {
+        -- "contrib/zlib"
+        -- "contrib/zlib/crc32.h",
+        -- "contrib/zlib/deflate.h",
+        -- "contrib/zlib/inffast.h",
+        -- "contrib/zlib/inflate.h",
+        -- "contrib/zlib/inftrees.h",
+        -- "contrib/zlib/trees.h",
+        -- "contrib/zlib/zutil.h",
+        -- "contrib/zlib/gzguts.h",
+        -- "contrib/zlib/zlib.h"
+    -- }
+    
+    -- files
+    -- {
+        -- "contrib/zlib/adler32.c",
+        -- "contrib/zlib/compress.c",
+        -- "contrib/zlib/crc32.c",
+        -- "contrib/zlib/deflate.c",
+        -- "contrib/zlib/inffast.c",
+        -- "contrib/zlib/inflate.c",
+        -- "contrib/zlib/inftrees.c",
+        -- "contrib/zlib/trees.c",
+        -- "contrib/zlib/zutil.c",
+        -- "contrib/zlib/gzlib.c",
+        -- "contrib/zlib/gzread.c",
+        -- "contrib/zlib/gzwrite.c",
+        -- "contrib/zlib/gzclose.c"
+    -- }
+    
+    
+project "zlib"
+    kind "StaticLib"
+    language "C"
+
+	targetdir ("bin/" .. outputdir .. "/%{prj.name}")
+	objdir ("bin-int/" .. outputdir .. "/%{prj.name}")
+
+	--defines     { "N_FSEEKO" }
+	warnings    "off"
+
+	files
+	{
+		"contrib/zlib/*.h",
+		"contrib/zlib/*.c"
+	}
+
+	filter "system:windows"
+		defines { "_WINDOWS" }
+
+	filter "system:not windows"
+		defines { 'HAVE_UNISTD_H' }
