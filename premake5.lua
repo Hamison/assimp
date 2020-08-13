@@ -210,8 +210,8 @@ project "assimp"
         optimize "on"    
     
 project "zlib"
-    kind "StaticLib"
-    language "C"
+  kind "StaticLib"
+  language "C"
 
 	targetdir ("bin/" .. outputdir .. "/%{prj.name}")
 	objdir ("bin-int/" .. outputdir .. "/%{prj.name}")
